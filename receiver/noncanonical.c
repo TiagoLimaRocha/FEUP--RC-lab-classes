@@ -5,6 +5,10 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "macros.h"
 
 #define BAUDRATE B38400
 #define _POSIX_SOURCE 1 /* POSIX compliant source */
@@ -12,6 +16,53 @@
 #define TRUE 1
 
 volatile int STOP = FALSE;
+
+typedef struct
+{
+  uint8_t flags[5];
+} Control_data;
+
+uint8_t make_ctrl_bcc(uint8_t A, uint8_t C)
+{
+  uint8_t bcc = A ^ C;
+  return bcc;
+}
+
+int chk_ctrl_bcc(uint8_t A, uint8_t C, uint8_t BCC)
+{
+  if ((A ^ C) == BCC)
+    return TRUE;
+
+  return FALSE;
+}
+
+int verify_ctrl(Control_data *ct)
+{
+  if (ct->flags[LL_START_F] != LL_F ||
+      ct->flags[LL_END_F] != LL_F ||
+      chk_ctrl_bcc(ct->flags[LL_CTRL_A], ct->flags[LL_CTRL_C], ct->flags[LL_CTRL_BCC]))
+  {
+    printf("LL: Order of control packet is incorrect or BCC is incorrect\n");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+int read_ctrl_pck(int fd)
+{
+  int counter = 0;
+
+  Control_data ct;
+
+  while (counter < 5)
+  {
+    res = read(fd, ct.flags[counter], 1); /* returns after 5 chars have been input */
+    buf[res] = 0;                         /* so we can printf... */
+    printf(":%s:%d\n", buf, res);
+    counter++;
+  }
+}
 
 int main(int argc, char **argv)
 {
@@ -72,10 +123,8 @@ int main(int argc, char **argv)
   printf("New termios structure set\n");
 
   while (STOP == FALSE)
-  {                           /* loop for input */
-    res = read(fd, buf, 255); /* returns after 5 chars have been input */
-    buf[res] = 0;             /* so we can printf... */
-    printf(":%s:%d\n", buf, res);
+  { /* loop for input */
+
     if (buf[0] == 'z')
       STOP = TRUE;
   }
@@ -83,6 +132,8 @@ int main(int argc, char **argv)
   /* 
     O ciclo WHILE deve ser alterado de modo a respeitar o indicado no gui�o 
   */
+
+  sleep(1);
 
   tcsetattr(fd, TCSANOW, &oldtio);
   close(fd);
